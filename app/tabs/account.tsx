@@ -25,17 +25,17 @@ export default function Account(){
         <Card style={{alignItems:'center', marginTop:24}}>
           <Image source={{uri:'https://i.pravatar.cc/150?img=12'}} style={{width:100, height:100, borderRadius:50, marginBottom:12}}/>
           <Text style={{fontSize:20, fontWeight:'700'}}>Lê Nguyễn Quang Vinh</Text>
-          <Text style={{color: theme.subtext}}>DHKTPM18B • 22717161</Text>
+          <Text style={{color: theme.subtext}}>Grop16-Mobile</Text>
         </Card>
 
         <Card style={{marginTop:16}}>
           <Text style={{fontWeight:'700'}}>Email</Text>
-          <Text style={{color: theme.subtext}}>vinh@example.com</Text>
+          <Text style={{color: theme.subtext}}>vinh@gmail.com</Text>
         </Card>
 
         <Card style={{marginTop:10}}>
-          <Text style={{fontWeight:'700'}}>Username</Text>
-          <Text style={{color: theme.subtext}}>lequangvinh</Text>
+          <Text style={{fontWeight:'700'}}>Date of birth</Text>
+          <Text style={{color: theme.subtext}}>30/10/2004</Text>
         </Card>
 
         <View style={{marginTop:32}}>
