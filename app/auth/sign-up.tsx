@@ -1,51 +1,55 @@
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Alert, Image, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Container, PrimaryButton, Screen } from '../../components/Ui';
-import { loginWithMockApi } from '../../lib/auth';
 import { theme } from '../../theme';
+import { signUpWithMockApi } from '../../lib/auth';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function SignIn() {
+export default function SignUp() {
   const router = useRouter();
+  const [fullname, setFullname] = useState('');
   const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
   const [showPw, setShowPw] = useState(false);
+  const [showPw2, setShowPw2] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const errors = useMemo(() => {
     const e: Record<string, string> = {};
+    if (!fullname.trim()) e.fullname = 'Vui lòng nhập họ tên';
     if (!email.trim()) e.email = 'Vui lòng nhập email';
     else if (!emailRegex.test(email.trim())) e.email = 'Email không hợp lệ';
-    if (!pw) e.pw = 'Vui lòng nhập mật khẩu';
+    if (!pw) e.pw = 'Nhập mật khẩu';
+    else if (pw.length < 6) e.pw = 'Tối thiểu 6 ký tự';
+    if (!pw2) e.pw2 = 'Nhập lại mật khẩu';
+    else if (pw !== pw2) e.pw2 = 'Mật khẩu xác nhận không khớp';
     return e;
-  }, [email, pw]);
+  }, [fullname, email, pw, pw2]);
 
-  const formValid = Object.keys(errors).length === 0;
+  const formValid = useMemo(() => Object.keys(errors).length === 0, [errors]);
 
-  async function onSignIn() {
+  async function onSignUp() {
     if (!formValid || loading) return;
     try {
       setLoading(true);
-      const user = await loginWithMockApi(email.trim().toLowerCase(), pw);
-      if (user) {
-        Alert.alert('Thành công', `Xin chào ${user.fullname}!`, [
-          { text: 'OK', onPress: () => router.replace('/tabs/home') },
-        ]);
-      } else {
-        Alert.alert('Đăng nhập thất bại', 'Tài khoản hoặc mật khẩu không hợp lệ.');
-      }
+      const user = await signUpWithMockApi({
+        fullname: fullname.trim(),
+        email: email.trim().toLowerCase(),
+        password: pw,
+      });
+
+      Alert.alert('Tạo tài khoản thành công', `Chào mừng ${user.fullname}!`, [
+        // Có thể chuyển sang sign-in để login đúng flow
+        { text: 'Đăng nhập', onPress: () => router.replace('/auth/sign-in') },
+        // Hoặc vào thẳng app nếu bạn đã có cơ chế set session
+        // { text: 'Vào app', onPress: () => router.replace('/tabs/home') },
+      ]);
     } catch (e: any) {
-      Alert.alert('Lỗi mạng', String(e?.message || e));
+      // signUpWithMockApi đã ném lỗi "Email đã tồn tại." khi trùng
+      Alert.alert('Đăng ký thất bại', String(e?.message || e));
     } finally {
       setLoading(false);
     }
@@ -54,21 +58,23 @@ export default function SignIn() {
   return (
     <Screen>
       <Container style={{ marginTop: 70 }}>
-        <Text
-          style={{
-            fontSize: 28,
-            fontWeight: '800',
-            marginBottom: 18,
-            textAlign: 'center',
-          }}
-        >
-          Welcome back 👋
+        <Text style={{ fontSize: 28, fontWeight: '800', marginBottom: 18, textAlign: 'center' }}>
+          Create account ✨
         </Text>
 
-        {/* Email */}
-        <Text style={{ fontWeight: '700', marginBottom: 8, marginTop: 24 }}>Email</Text>
+        <Text style={{ fontWeight: '700', marginBottom: 8, marginTop: 6 }}>Full name</Text>
         <TextInput
-          placeholder="Enter email"
+          placeholder="Your name"
+          value={fullname}
+          onChangeText={setFullname}
+          autoCapitalize="words"
+          style={styles.input}
+        />
+        {!!errors.fullname && <Text style={styles.err}>{errors.fullname}</Text>}
+
+        <Text style={{ fontWeight: '700', marginBottom: 8, marginTop: 6 }}>Email</Text>
+        <TextInput
+          placeholder="you@example.com"
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -78,11 +84,10 @@ export default function SignIn() {
         />
         {!!errors.email && <Text style={styles.err}>{errors.email}</Text>}
 
-        {/* Password */}
         <Text style={{ fontWeight: '700', marginBottom: 8, marginTop: 6 }}>Password</Text>
         <View style={{ position: 'relative' }}>
           <TextInput
-            placeholder="Enter password"
+            placeholder="At least 6 characters"
             secureTextEntry={!showPw}
             value={pw}
             onChangeText={setPw}
@@ -97,32 +102,35 @@ export default function SignIn() {
         </View>
         {!!errors.pw && <Text style={styles.err}>{errors.pw}</Text>}
 
-        {/* Forgot */}
-        <View style={{ alignItems: 'flex-end', marginTop: 8 }}>
-          <TouchableOpacity onPress={() => {/* TODO: navigate to forgot password */}}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Image
-                source={{ uri: 'https://cdn-icons-png.flaticon.com/128/17508/17508481.png' }}
-                style={{ width: 18, height: 18, marginRight: 8 }}
-              />
-              <Text style={{ color: theme.text }}>Forgot password?</Text>
-            </View>
-          </TouchableOpacity>
+        <Text style={{ fontWeight: '700', marginBottom: 8, marginTop: 6 }}>Confirm password</Text>
+        <View style={{ position: 'relative' }}>
+          <TextInput
+            placeholder="Re-enter password"
+            secureTextEntry={!showPw2}
+            value={pw2}
+            onChangeText={setPw2}
+            style={styles.input}
+          />
+          <Text
+            onPress={() => setShowPw2((s) => !s)}
+            style={{ position: 'absolute', right: 12, top: 14, color: theme.subtext }}
+          >
+            {showPw2 ? '🙈' : '👁️'}
+          </Text>
         </View>
+        {!!errors.pw2 && <Text style={styles.err}>{errors.pw2}</Text>}
 
-        {/* Submit */}
         <View style={{ marginTop: 16 }}>
-          <TouchableOpacity disabled={loading || !formValid} onPress={onSignIn}>
+          <TouchableOpacity disabled={loading || !formValid} onPress={onSignUp}>
             <View style={{ opacity: loading || !formValid ? 0.6 : 1 }}>
-              <PrimaryButton title={loading ? 'Signing in...' : 'Sign In'} onPress={onSignIn} />
+              <PrimaryButton title={loading ? 'Signing up...' : 'Sign Up'} onPress={onSignUp} />
             </View>
           </TouchableOpacity>
           {loading && <ActivityIndicator style={{ marginTop: 8 }} />}
         </View>
 
-        {/* Socials (disabled) */}
         <View style={{ alignItems: 'center', marginVertical: 16 }}>
-          <Text style={{ color: theme.subtext }}>OR LOG IN WITH</Text>
+          <Text style={{ color: theme.subtext }}>OR SIGN UP WITH</Text>
           <View style={{ flexDirection: 'row', marginTop: 12 }}>
             {[
               { uri: 'https://cdn-icons-png.flaticon.com/128/5968/5968764.png', label: 'Facebook' },
@@ -148,13 +156,10 @@ export default function SignIn() {
           </View>
         </View>
 
-        {/* Switch to sign up */}
         <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
-          <Text style={{ color: theme.subtext }}>Don{"'"}t have an account? </Text>
-          <TouchableOpacity onPress={() => router.push('/auth/sign-up' as any)}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ color: theme.text, fontWeight: '700' }}>Sign up</Text>
-            </View>
+          <Text style={{ color: theme.subtext }}>Already have an account? </Text>
+          <TouchableOpacity onPress={() => router.replace('/auth/sign-in' as any)}>
+            <Text style={{ color: theme.text, fontWeight: '700' }}>Sign in</Text>
           </TouchableOpacity>
         </View>
       </Container>

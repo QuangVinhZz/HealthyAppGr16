@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
-import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Image, ScrollView, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
 import { Card, Container, Screen } from '../../components/Ui';
 import { theme } from '../../theme';
+import { api } from '../../lib/api';
+
+const CURRENT_USER_ID = '2'; // tạm thời
 
 const Ring = ({
   size = 220,
@@ -18,7 +21,6 @@ const Ring = ({
   bg?: string;
   children?: React.ReactNode;
 }) => {
-  // Vòng tròn nền + “overlay” trắng tạo cảm giác vòng còn lại
   const inner = size - stroke * 2;
   return (
     <View
@@ -31,7 +33,6 @@ const Ring = ({
         alignItems: 'center',
       }}
     >
-      {/* vòng trên (màu) */}
       <View
         style={{
           position: 'absolute',
@@ -42,11 +43,10 @@ const Ring = ({
           borderColor: color,
           borderRightColor: 'transparent',
           borderBottomColor: 'transparent',
-          transform: [{ rotate: `${(percent / 100) * 270 - 135}deg` }], // xoay để tạo đầu vòng
+          transform: [{ rotate: `${(percent / 100) * 270 - 135}deg` }],
           opacity: 0.9,
         }}
       />
-      {/* che phần còn lại để trông như gauge 270deg */}
       <View
         style={{
           position: 'absolute',
@@ -71,7 +71,6 @@ const Ring = ({
         />
       </View>
 
-      {/* lõi trắng */}
       <View
         style={{
           width: inner,
@@ -147,53 +146,98 @@ const MiniStat = ({
 
 export default function Steps() {
   const [tab, setTab] = useState<'today' | 'weekly' | 'monthly'>('weekly');
+  const [metrics, setMetrics] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function reloadAll(opts?: { refresh?: boolean }) {
+    try {
+      if (opts?.refresh) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+      const list = await api.metrics.list({ userId: CURRENT_USER_ID, order: 'desc' });
+      setMetrics(Array.isArray(list) ? list : []);
+    } catch (err) {
+      setError('Không tải được dữ liệu. Kéo để thử lại.');
+    } finally {
+      if (opts?.refresh) setRefreshing(false);
+      else setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    reloadAll();
+  }, []);
+
+  // lấy bản ghi mới nhất
+  const today = metrics.length ? metrics[metrics.length - 1] : { steps: 0, calories: 0, sleep: 0 };
+  const goal = 18000;
+  const percent = Math.min(100, Math.round((today.steps / goal) * 100));
+
+  // 7 ngày gần nhất để vẽ chart
+  const last7 = metrics.slice(-7);
+  const barHeights = last7.map((m) => (m.steps ?? 0) / goal * 150);
 
   return (
     <Screen>
-      <ScrollView>
+      <ScrollView
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => reloadAll({ refresh: true })} />
+        }
+      >
         <Container style={{ paddingVertical: 16 }}>
-          {/* Title */}
           <Text style={{ textAlign: 'center', fontSize: 18, fontWeight: '800', marginBottom: 8 }}>
             Steps
           </Text>
 
-          {/* Headline */}
+          {loading && <Text style={{ textAlign: 'center', color: theme.subtext }}>Loading...</Text>}
+          {!!error && <Text style={{ textAlign: 'center', color: 'red' }}>{error}</Text>}
+
           <Text style={{ textAlign: 'center', fontSize: 18, fontWeight: '800' }}>
-            You have achieved{' '}
-            <Text style={{ color: theme.primary }}>80%</Text>
-            {' '}of your goal
+            You have achieved <Text style={{ color: theme.primary }}>{percent}%</Text> of your goal
           </Text>
           <Text style={{ textAlign: 'center', fontSize: 18, fontWeight: '800' }}>today</Text>
 
-          {/* Big ring */}
           <View style={{ alignItems: 'center', marginTop: 10 }}>
-            <Ring percent={80}>
+            <Ring percent={percent}>
               <Image
                 source={{ uri: 'https://img.icons8.com/ios-filled/100/00B8D9/footsteps.png' }}
                 style={{ width: 26, height: 26, tintColor: theme.primary, marginBottom: 6 }}
               />
-              <Text style={{ fontSize: 28, fontWeight: '900' }}>11,857</Text>
-              <Text style={{ color: theme.subtext, marginTop: 2 }}>Steps out of 18k</Text>
+              <Text style={{ fontSize: 28, fontWeight: '900' }}>
+                {today.steps?.toLocaleString() ?? 0}
+              </Text>
+              <Text style={{ color: theme.subtext, marginTop: 2 }}>
+                Steps out of {goal.toLocaleString()}
+              </Text>
             </Ring>
           </View>
 
-          {/* three mini stats */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 }}>
-            <MiniStat tint="#F2994A" value="850 kcal" label="" icon={'https://img.icons8.com/ios-filled/50/ff7a00/fire-element.png'} />
-            <MiniStat tint="#E37E86" value="5 km" label="" icon={'https://img.icons8.com/ios-filled/50/e37e86/marker.png'} />
-            <MiniStat tint={theme.primary} value="120 min" label="" icon={'https://img.icons8.com/ios-filled/50/00b8d9/clock.png'} />
+            <MiniStat
+              tint="#F2994A"
+              value={`${today.calories ?? 0} kcal`}
+              label="Calories"
+              icon="https://img.icons8.com/ios-filled/50/ff7a00/fire-element.png"
+            />
+            <MiniStat
+              tint="#E37E86"
+              value={`${(today.steps / 1250).toFixed(1)} km`}
+              label="Distance"
+              icon="https://img.icons8.com/ios-filled/50/e37e86/marker.png"
+            />
+            <MiniStat
+              tint={theme.primary}
+              value={`${Math.round(today.steps / 150)} min`}
+              label="Duration"
+              icon="https://img.icons8.com/ios-filled/50/00b8d9/clock.png"
+            />
           </View>
 
-          {/* Chart card */}
+          {/* Chart */}
           <Card style={{ marginTop: 16, padding: 0, overflow: 'hidden' }}>
-            <View
-              style={{
-                backgroundColor: theme.primary,
-                borderRadius: 18,
-                padding: 14,
-              }}
-            >
-              {/* Segmented control */}
+            <View style={{ backgroundColor: theme.primary, borderRadius: 18, padding: 14 }}>
               <View
                 style={{
                   flexDirection: 'row',
@@ -225,27 +269,54 @@ export default function Steps() {
                 })}
               </View>
 
-              {/* fake chart lines để giống mock */}
               <View style={{ height: 180, marginTop: 14, justifyContent: 'flex-end' }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', height: 150 }}>
-                  {[60, 30, 120, 20, 140, 50, 130].map((h, i) => (
-                    <View
-                      key={i}
-                      style={{
-                        width: 12,
-                        height: h,
-                        backgroundColor: '#fff',
-                        opacity: 0.9,
-                        borderTopLeftRadius: 6,
-                        borderTopRightRadius: 6,
-                        alignSelf: 'flex-end',
-                      }}
-                    />
-                  ))}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    height: 150,
+                    alignItems: 'flex-end',
+                  }}
+                >
+                  {barHeights.length > 0
+                    ? barHeights.map((h, i) => (
+                        <View
+                          key={i}
+                          style={{
+                            width: 12,
+                            height: Math.max(8, h),
+                            backgroundColor: '#fff',
+                            opacity: 0.9,
+                            borderTopLeftRadius: 6,
+                            borderTopRightRadius: 6,
+                            alignSelf: 'flex-end',
+                          }}
+                        />
+                      ))
+                    : [60, 30, 120, 20, 140, 50, 130].map((h, i) => (
+                        <View
+                          key={i}
+                          style={{
+                            width: 12,
+                            height: h,
+                            backgroundColor: '#fff',
+                            opacity: 0.9,
+                            borderTopLeftRadius: 6,
+                            borderTopRightRadius: 6,
+                            alignSelf: 'flex-end',
+                          }}
+                        />
+                      ))}
                 </View>
-                {/* labels weekdays */}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
-                  {['Mo', 'Tu', 'We', 'Th', 'Fri', 'Sa', 'Su'].map((d) => (
+
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    marginTop: 8,
+                  }}
+                >
+                  {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => (
                     <Text key={d} style={{ color: '#fff', opacity: 0.9 }}>
                       {d}
                     </Text>
