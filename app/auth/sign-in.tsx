@@ -54,18 +54,10 @@ export default function SignIn() {
   return (
     <Screen>
       <Container style={{ marginTop: 70 }}>
-        <Text
-          style={{
-            fontSize: 28,
-            fontWeight: '800',
-            marginBottom: 18,
-            textAlign: 'center',
-          }}
-        >
+        <Text style={{ fontSize: 28, fontWeight: '800', marginBottom: 18, textAlign: 'center' }}>
           Welcome back 👋
         </Text>
 
-        {/* Email */}
         <Text style={{ fontWeight: '700', marginBottom: 8, marginTop: 24 }}>Email</Text>
         <TextInput
           placeholder="Enter email"
@@ -78,7 +70,6 @@ export default function SignIn() {
         />
         {!!errors.email && <Text style={styles.err}>{errors.email}</Text>}
 
-        {/* Password */}
         <Text style={{ fontWeight: '700', marginBottom: 8, marginTop: 6 }}>Password</Text>
         <View style={{ position: 'relative' }}>
           <TextInput
@@ -89,7 +80,7 @@ export default function SignIn() {
             style={styles.input}
           />
           <Text
-            onPress={() => setShowPw((s) => !s)}
+            onPress={() => setShowPw(s => !s)}
             style={{ position: 'absolute', right: 12, top: 14, color: theme.subtext }}
           >
             {showPw ? '🙈' : '👁️'}
@@ -97,9 +88,8 @@ export default function SignIn() {
         </View>
         {!!errors.pw && <Text style={styles.err}>{errors.pw}</Text>}
 
-        {/* Forgot */}
         <View style={{ alignItems: 'flex-end', marginTop: 8 }}>
-          <TouchableOpacity onPress={() => {/* TODO: navigate to forgot password */}}>
+          <TouchableOpacity onPress={() => { /* TODO: forgot */ }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Image
                 source={{ uri: 'https://cdn-icons-png.flaticon.com/128/17508/17508481.png' }}
@@ -110,17 +100,16 @@ export default function SignIn() {
           </TouchableOpacity>
         </View>
 
-        {/* Submit */}
         <View style={{ marginTop: 16 }}>
           <TouchableOpacity disabled={loading || !formValid} onPress={onSignIn}>
             <View style={{ opacity: loading || !formValid ? 0.6 : 1 }}>
+              {/* KHÔNG truyền disabled ở đây */}
               <PrimaryButton title={loading ? 'Signing in...' : 'Sign In'} onPress={onSignIn} />
             </View>
           </TouchableOpacity>
           {loading && <ActivityIndicator style={{ marginTop: 8 }} />}
         </View>
 
-        {/* Socials (disabled) */}
         <View style={{ alignItems: 'center', marginVertical: 16 }}>
           <Text style={{ color: theme.subtext }}>OR LOG IN WITH</Text>
           <View style={{ flexDirection: 'row', marginTop: 12 }}>
@@ -129,18 +118,7 @@ export default function SignIn() {
               { uri: 'https://cdn-icons-png.flaticon.com/128/281/281764.png', label: 'Google' },
               { uri: 'https://cdn-icons-png.flaticon.com/128/731/731985.png', label: 'Apple' },
             ].map((p, i) => (
-              <TouchableOpacity
-                key={i}
-                disabled
-                style={{
-                  opacity: 0.5,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  marginHorizontal: 6,
-                }}
-              >
+              <TouchableOpacity key={i} disabled style={{ opacity: 0.5, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, marginHorizontal: 6 }}>
                 <Image source={{ uri: p.uri }} style={{ width: 18, height: 18, marginRight: 8 }} />
                 <Text style={{ color: theme.purple, fontWeight: '700' }}>{p.label}</Text>
               </TouchableOpacity>
@@ -148,7 +126,6 @@ export default function SignIn() {
           </View>
         </View>
 
-        {/* Switch to sign up */}
         <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
           <Text style={{ color: theme.subtext }}>Don{"'"}t have an account? </Text>
           <TouchableOpacity onPress={() => router.push('/auth/sign-up' as any)}>

@@ -1,14 +1,17 @@
-import { Link, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+// Home.js
+
+// 👈 [THÊM] import useFocusEffect và useCallback
+import { Link, useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react'; // 👈 Thêm useCallback
 import {
   Dimensions,
   FlatList,
   Image,
+  RefreshControl,
   ScrollView,
   Text,
   TouchableOpacity,
   View,
-  RefreshControl,
 } from 'react-native';
 import { Card, Container, H1, H2, Screen } from '../../components/Ui';
 import { api } from '../../lib/api';
@@ -16,6 +19,7 @@ import { theme } from '../../theme';
 
 const CURRENT_USER_ID = '2'; // tạm thời dùng user demo
 
+// ... (Component Tile, nf, summarizeWeek, ReportCard, BlogCard giữ nguyên) ...
 const Tile = ({
   title,
   value,
@@ -63,7 +67,6 @@ const Tile = ({
         }}
       />
     ) : null}
-
     <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>{title}</Text>
     <Text
       style={{
@@ -83,11 +86,7 @@ const Tile = ({
     )}
   </TouchableOpacity>
 );
-
-// format số
 const nf = (n: number) => n.toLocaleString();
-
-// gom số liệu 7 ngày gần nhất
 function summarizeWeek(list: any[]) {
   const last7 = Array.isArray(list) ? list.slice(-7) : [];
   const steps = last7.reduce((s, x) => s + (x.steps || 0), 0);
@@ -96,7 +95,6 @@ function summarizeWeek(list: any[]) {
   const waterMl = last7.reduce((s) => s + 1523, 0);
   return { steps, workoutMin, waterMl, sleepMin };
 }
-
 const ReportCard = ({
   icon,
   title,
@@ -129,7 +127,6 @@ const ReportCard = ({
     <Text style={{ fontSize: 28, fontWeight: '900', color: '#3B3F45' }}>{value}</Text>
   </View>
 );
-
 type Article = {
   id: string;
   title: string;
@@ -138,9 +135,7 @@ type Article = {
   votes?: number;
   slug?: string;
 };
-
 const CARD_HEIGHT = 360;
-
 const BlogCard = ({ item, onPress }: { item: Article; onPress?: () => void }) => (
   <TouchableOpacity
     activeOpacity={0.9}
@@ -230,15 +225,21 @@ export default function Home() {
   const CARD_W = Math.min(280, width - 48);
   const GAP = 14;
 
-  async function reloadAll(opts?: { refresh?: boolean }) {
+  // 👈 [ĐÃ SỬA] Bọc hàm reloadAll bằng useCallback
+  // Điều này ngăn nó bị tạo lại mỗi lần render, giúp useFocusEffect hoạt động ổn định
+  const reloadAll = useCallback(async (opts?: { refresh?: boolean }) => {
     try {
       if (opts?.refresh) setRefreshing(true);
       else setLoading(true);
       setError(null);
+      
       const [m, a] = await Promise.all([
-        api.metrics.list({ userId: CURRENT_USER_ID }),
+        // Gọi list (sẽ đọc từ cache nếu có)
+        // Mặc định 'asc' (tăng dần) là đúng
+        api.metrics.list({ userId: CURRENT_USER_ID }), 
         api.articles.list(),
       ]);
+      
       setMetrics(Array.isArray(m) ? m : []);
       setArticles(Array.isArray(a) ? a : []);
     } catch {
@@ -247,27 +248,43 @@ export default function Home() {
       if (opts?.refresh) setRefreshing(false);
       else setLoading(false);
     }
-  }
+  }, []); // 👈 Dependency rỗng, hàm này chỉ được tạo 1 lần
 
-  useEffect(() => {
-    reloadAll();
-  }, []);
+  
+  // 👈 [ĐÃ SỬA] Thay thế useEffect bằng useFocusEffect
+  // Hàm này sẽ chạy MỖI KHI bạn quay lại màn hình Home
+  useFocusEffect(
+    useCallback(() => {
+      console.log('Home screen focused, reloading data...'); // Thêm log để kiểm tra
+      reloadAll();
+    }, [reloadAll]) // Phụ thuộc vào hàm reloadAll (đã bọc useCallback)
+  );
 
+  // Giữ lại useEffect cho đồng hồ
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(t);
   }, []);
 
+  // 👈 [ĐÃ SỬA] Đảm bảo logic lấy 'last' là chính xác
+  // Vì list 'asc' (tăng dần), item cuối cùng là item mới nhất.
   const last =
     metrics.length > 0
-      ? metrics[metrics.length - 1]
-      : { steps: 11857, sleep: 7.5, heartRate: 68, calories: 960 };
+      ? metrics[metrics.length - 1] 
+      : { steps: 0, sleep: 0, heartRate: 0, calories: 0 }; // Dữ liệu mặc định
+
+  // Tính toán thời gian ngủ cho ô Highlight
+  const todaySleepValue = last.sleep ?? 0;
+  const todaySleepHours = Math.floor(todaySleepValue);
+  const todaySleepMinutes = Math.round((todaySleepValue % 1) * 60);
+  const todaySleepText = `${todaySleepHours} h ${todaySleepMinutes} min`;
 
   return (
     <Screen>
       <ScrollView
         contentContainerStyle={{ paddingBottom: 28 }}
         refreshControl={
+          // RefreshControl vẫn dùng hàm reloadAll cũ, rất tốt
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => reloadAll({ refresh: true })}
@@ -286,7 +303,7 @@ export default function Home() {
             </View>
           )}
 
-          {/* header */}
+          {/* ... (Header giữ nguyên) ... */}
           <View>
             <View
               style={{
@@ -375,11 +392,10 @@ export default function Home() {
             </View>
           </View>
 
-          {/* Overview */}
+          {/* ... (Overview và Health Score giữ nguyên) ... */}
           <View style={{ marginTop: 8 }}>
             <H1>Overview</H1>
           </View>
-
           <Card style={{ marginTop: 12, backgroundColor: '#E9FBFF', padding: 18 }}>
             <View
               style={{
@@ -444,7 +460,7 @@ export default function Home() {
             </View>
           </Card>
 
-          {/* Highlights */}
+          {/* Highlights Header */}
           <View
             style={{
               flexDirection: 'row',
@@ -470,9 +486,10 @@ export default function Home() {
               marginTop: 10,
             }}
           >
+            {/* 👈 [ĐÃ SỬA] Dùng 'last' để cập nhật Steps */}
             <Tile
               title="Steps"
-              value={`${last.steps.toLocaleString()}`}
+              value={`${(last.steps ?? 0).toLocaleString()}`}
               color="#05C0DF"
               icon="https://img.icons8.com/ios-filled/50/ffffff/running.png"
               subtitle="updated 15 min ago"
@@ -486,17 +503,21 @@ export default function Home() {
               subtitle="updated 30m ago"
               onPress={() => router.push('/stack/cycle' as any)}
             />
+            
+            {/* 👈 [QUAN TRỌNG] Ô Sleep giờ đã tự động cập nhật */}
             <Tile
               title="Sleep"
-              value={`7 h 31 min`}
+              value={loading ? '...' : todaySleepText} 
               color="#0E5A9C"
               icon="https://cdn-icons-png.flaticon.com/128/14285/14285932.png"
-              subtitle="updated a day ago"
+              subtitle="updated today"
               onPress={() => router.push('/stack/sleeps' as any)}
             />
+            
+            {/* 👈 [ĐÃ SỬA] Dùng 'last' để cập nhật Calories */}
             <Tile
               title="Nutrition"
-              value={`960 kcal`}
+              value={`${last.calories ?? 0} kcal`}
               color="#D4741E"
               icon="https://img.icons8.com/ios-filled/50/ffffff/porridge.png"
               subtitle="updated 5 min ago"
@@ -504,8 +525,7 @@ export default function Home() {
             />
           </View>
 
-          {/* This week report */}
-          {/* ---- This week report ---- */}
+          {/* ... (This week report giữ nguyên) ... */}
           <View
             style={{
               flexDirection: 'row',
@@ -547,7 +567,7 @@ export default function Home() {
           })()}
 
 
-          {/* Blogs */}
+          {/* ... (Blogs giữ nguyên) ... */}
           <View
             style={{
               flexDirection: 'row',

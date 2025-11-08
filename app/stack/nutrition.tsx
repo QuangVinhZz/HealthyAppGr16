@@ -1,133 +1,252 @@
+// @ts-nocheck
+import { useLocalSearchParams, useRouter } from 'expo-router'; // 👈 [BƯỚC 1] Dùng hook
 import React, { useEffect, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
-import { Card, Container, PrimaryButton, Screen } from '../../components/Ui';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import * as Progress from 'react-native-progress';
+import { Container, Screen } from '../../components/Ui';
 import { theme } from '../../theme';
-import { api } from '../../lib/api';
 
-const CURRENT_USER_ID = '2';        // tạm thời
-const CAL_GOAL = 1300;              // mục tiêu kcal/ngày
-const MACRO_RATIO = {               // tỉ lệ mặc định: 40% carbs, 30% protein, 30% fat
-  carbs: 0.4,
-  protein: 0.3,
-  fat: 0.3,
-};
+// --- Giả lập mục tiêu hàng ngày ---
+const GOAL_KCAL = 1300;
+const GOAL_FAT = 60; // gam
+const GOAL_PROTEIN = 100; // gam
+const GOAL_CARBS = 150; // gam
 
-// helper: kcal -> gram theo 4/4/9
-function macrosFromCalories(kcal: number, ratio = MACRO_RATIO) {
-  const carbsK = kcal * ratio.carbs;
-  const proteinK = kcal * ratio.protein;
-  const fatK = kcal * ratio.fat;
-  return {
-    carbsG: Math.round(carbsK / 4),
-    proteinG: Math.round(proteinK / 4),
-    fatG: Math.round(fatK / 9),
-  };
-}
+// Component MacroBar (Không thay đổi)
+const MacroBar = ({ icon, name, value, goal, color }) => (
+  <View style={styles.macroRow}>
+    <View style={styles.macroInfo}>
+      <Text style={styles.macroIcon}>{icon}</Text>
+      <Text style={styles.macroName}>{name}</Text>
+    </View>
+    <View style={styles.macroProgress}>
+      <Progress.Bar
+        progress={value / goal}
+        width={null}
+        height={8}
+        color={color}
+        unfilledColor="#F0F4F8"
+        borderWidth={0}
+        borderRadius={8}
+        style={{ flex: 1 }}
+      />
+    </View>
+    <Text style={styles.macroValue}>{`${Math.round(value)}g / ${goal}g`}</Text>
+  </View>
+);
 
-export default function Nutrition() {
-  const [metrics, setMetrics] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+// 👈 [BƯỚC 2] Xóa { navigation, route }
+export default function NutritionScreen() {
+  // 👈 [BƯỚC 3] Lấy params và router bằng hook
+  const params = useLocalSearchParams();
+  const router = useRouter();
 
-  async function reloadAll(opts?: { refresh?: boolean }) {
-    try {
-      if (opts?.refresh) setRefreshing(true); else setLoading(true);
-      setError(null);
-      const list = await api.metrics.list({ userId: CURRENT_USER_ID, order: 'desc' });
-      setMetrics(Array.isArray(list) ? list : []);
-    } catch (e) {
-      setError('Không tải được dữ liệu. Kéo xuống để thử lại.');
-    } finally {
-      if (opts?.refresh) setRefreshing(false); else setLoading(false);
-    }
-  }
+  const [consumedMeals, setConsumedMeals] = useState([
+    { name: 'Bữa sáng', kcal: 350, fat: 12, protein: 20, carbs: 40 },
+    { name: 'Bữa trưa', kcal: 610, fat: 20, protein: 52, carbs: 56 },
+  ]);
 
+  // 👈 [BƯỚC 4] Sửa lại logic để đọc từ params
   useEffect(() => {
-    reloadAll();
-  }, []);
+    // Lắng nghe 'newMealKcal' (giá trị bạn gửi về từ trang add-meal)
+    if (params.newMealKcal) {
+      // Chuyển đổi params (luôn là string) về đúng kiểu dữ liệu
+      const newMeal = {
+        name: params.newMealName || 'My Meal',
+        kcal: parseFloat(params.newMealKcal) || 0,
+        fat: parseFloat(params.newMealFat) || 0,
+        protein: parseFloat(params.newMealProtein) || 0,
+        carbs: parseFloat(params.newMealCarbs) || 0,
+      };
+      
+      // Thêm bữa ăn mới vào danh sách
+      setConsumedMeals(prevMeals => [...prevMeals, newMeal]);
+      
+      // [QUAN TRỌNG] Xóa params đi để không bị thêm lại
+      router.setParams({
+          newMealName: '',
+          newMealKcal: '',
+          newMealFat: '',
+          newMealProtein: '',
+          newMealCarbs: '',
+      });
+    }
+  }, [params.newMealKcal]); // Chỉ chạy lại khi 'newMealKcal' thay đổi
 
-  // lấy bản mới nhất trong ngày
-  const today = useMemo(() => {
-    if (!metrics.length) return { calories: 0, steps: 0, sleep: 0 };
-    return metrics[metrics.length - 1];
-  }, [metrics]);
+  // Logic tính toán (Không thay đổi)
+  const totals = useMemo(() => {
+    return consumedMeals.reduce(
+      (sum, meal) => {
+        sum.kcal += meal.kcal;
+        sum.fat += meal.fat;
+        sum.protein += meal.protein;
+        sum.carbs += meal.carbs;
+        return sum;
+      },
+      { kcal: 0, fat: 0, protein: 0, carbs: 0 }
+    );
+  }, [consumedMeals]);
 
-  const kcal = Number(today.calories ?? 0);
-  const percent = Math.max(0, Math.min(100, Math.round((kcal / CAL_GOAL) * 100)));
-
-  const { carbsG, proteinG, fatG } = macrosFromCalories(kcal);
+  const kcalProgress = totals.kcal / GOAL_KCAL;
+  const percentage = Math.round(kcalProgress * 100);
 
   return (
-    <Screen>
-      <ScrollView
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => reloadAll({ refresh: true })} />
-        }
-      >
-        <Container style={{ paddingVertical: 16 }}>
-          {loading && <Text style={{ textAlign: 'center', color: theme.subtext }}>Loading...</Text>}
-          {!!error && <Text style={{ textAlign: 'center', color: 'red' }}>{error}</Text>}
-
-          <Text style={{ textAlign: 'center' }}>
-            You have consumed{' '}
-            <Text style={{ color: theme.primary, fontWeight: '900' }}>
-              {kcal.toLocaleString()} kcal
-            </Text>{' '}
-            today
+    <Screen style={styles.screen}>
+      <ScrollView>
+        <Container style={styles.container}>
+          {/* Header đã cập nhật */}
+          <Text style={styles.headerText}>
+            Amount of kcal from your meal:
           </Text>
+          <Text style={styles.headerKcal}>{Math.round(totals.kcal)} kcal</Text>
 
-          {/* Progress ring đơn giản */}
-          <View
-            style={{
-              alignSelf: 'center',
-              marginVertical: 16,
-              width: 220,
-              height: 220,
-              borderRadius: 110,
-              borderWidth: 16,
-              borderColor: theme.primary,
-              justifyContent: 'center',
-              alignItems: 'center',
-              // che 40% để nhìn như 60% -> chỉ là minh họa, percent hiển thị chuẩn bên trong
-            }}
-          >
-            <Text style={{ fontSize: 28, fontWeight: '900' }}>{percent}%</Text>
-            <Text style={{ color: theme.subtext }}>of {CAL_GOAL.toLocaleString()} kcal</Text>
+          {/* Biểu đồ tròn */}
+          <View style={styles.circleContainer}>
+            <Progress.Circle
+              size={200}
+              progress={kcalProgress}
+              color={'#FFFFFF'}
+              thickness={15}
+              borderWidth={0}
+              unfilledColor="rgba(255, 255, 255, 0.3)"
+              showsText={true}
+              formatText={() => (
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={[styles.circleTextLarge, {color: '#FFFFFF'}]}>{percentage}%</Text>
+                  <Text style={[styles.circleTextSmall, {color: 'rgba(255, 255, 255, 0.8)'}]}>of {GOAL_KCAL} kcal</Text>
+                </View>
+              )}
+            />
           </View>
 
-          {/* Macros từ dữ liệu thật (ước lượng theo ratio) */}
-          {[
-            { label: 'Fat', key: 'fat', g: fatG },
-            { label: 'Protein', key: 'protein', g: proteinG },
-            { label: 'Carbs', key: 'carbs', g: carbsG },
-          ].map((r, i) => {
-            const p = Math.round(MACRO_RATIO[r.key as keyof typeof MACRO_RATIO] * 100);
-            return (
-              <Card
-                key={i}
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  marginBottom: 10,
-                }}
-              >
-                <Text>{r.label}</Text>
-                <Text>
-                  {r.g}g {p}%
-                </Text>
-              </Card>
-            );
-          })}
+          {/* Danh sách Macros */}
+          <View style={styles.macroContainer}>
+            <MacroBar
+              icon="🥑"
+              name="Fat"
+              value={totals.fat}
+              goal={GOAL_FAT}
+              color="#FFC107"
+            />
+            <MacroBar
+              icon="🍗"
+              name="Protein"
+              value={totals.protein}
+              goal={GOAL_PROTEIN}
+              color="#E91E63"
+            />
+            <MacroBar
+              icon="🍞"
+              name="Carbs"
+              value={totals.carbs}
+              goal={GOAL_CARBS}
+              color="#2196F3"
+            />
+          </View>
 
-          <PrimaryButton
-            title="Add meals"
-            onPress={() => {
-              // TODO: điều hướng đến form add meal (sau này)
-            }}
-          />
+          {/* Nút Add meals */}
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => router.push('/stack/add-meal')}
+          >
+            <Text style={styles.addButtonText}>＋ Add meals</Text>
+          </TouchableOpacity>
         </Container>
       </ScrollView>
     </Screen>
   );
 }
+
+// --- Styles (Không thay đổi) ---
+const styles = StyleSheet.create({
+  screen: {
+    backgroundColor: theme.primaryLight,
+  },
+  container: {
+    paddingVertical: 24,
+  },
+  headerText: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    color: '#FFFFFF',
+    opacity: 0.9,
+  },
+  headerKcal: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    color: '#FFFFFF',
+    marginBottom: 24,
+  },
+  circleContainer: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  circleTextLarge: {
+    fontSize: 40,
+    fontWeight: 'bold',
+    color: theme.primary,
+  },
+  circleTextSmall: {
+    fontSize: 16,
+    color: '#555',
+  },
+  macroContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  macroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  macroInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 100,
+  },
+  macroIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  macroName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  macroProgress: {
+    flex: 1,
+    marginHorizontal: 12,
+  },
+  macroValue: {
+    fontSize: 12,
+    color: '#777',
+    width: 80,
+    textAlign: 'right',
+  },
+  addButton: {
+    backgroundColor: theme.primary,
+    borderRadius: 30,
+    paddingVertical: 18,
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  addButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+});
