@@ -1,8 +1,8 @@
+// @ts-nocheck
 // Home.js
 
-// 👈 [THÊM] import useFocusEffect và useCallback
 import { Link, useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react'; // 👈 Thêm useCallback
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -19,7 +19,16 @@ import { theme } from '../../theme';
 
 const CURRENT_USER_ID = '2'; // tạm thời dùng user demo
 
-// ... (Component Tile, nf, summarizeWeek, ReportCard, BlogCard giữ nguyên) ...
+// ---------------- Helpers ----------------
+const nf = (n: number) => n.toLocaleString();
+/** YYYY-MM-DD theo local timezone */
+function todayStr(d = new Date()) {
+  const off = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - off * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+// ---------------- UI Blocks ----------------
 const Tile = ({
   title,
   value,
@@ -86,7 +95,7 @@ const Tile = ({
     )}
   </TouchableOpacity>
 );
-const nf = (n: number) => n.toLocaleString();
+
 function summarizeWeek(list: any[]) {
   const last7 = Array.isArray(list) ? list.slice(-7) : [];
   const steps = last7.reduce((s, x) => s + (x.steps || 0), 0);
@@ -95,6 +104,7 @@ function summarizeWeek(list: any[]) {
   const waterMl = last7.reduce((s) => s + 1523, 0);
   return { steps, workoutMin, waterMl, sleepMin };
 }
+
 const ReportCard = ({
   icon,
   title,
@@ -127,6 +137,7 @@ const ReportCard = ({
     <Text style={{ fontSize: 28, fontWeight: '900', color: '#3B3F45' }}>{value}</Text>
   </View>
 );
+
 type Article = {
   id: string;
   title: string;
@@ -135,6 +146,7 @@ type Article = {
   votes?: number;
   slug?: string;
 };
+
 const CARD_HEIGHT = 360;
 const BlogCard = ({ item, onPress }: { item: Article; onPress?: () => void }) => (
   <TouchableOpacity
@@ -212,6 +224,7 @@ const BlogCard = ({ item, onPress }: { item: Article; onPress?: () => void }) =>
   </TouchableOpacity>
 );
 
+// ---------------- Screen ----------------
 export default function Home() {
   const [metrics, setMetrics] = useState<any[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
@@ -220,26 +233,24 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [now, setNow] = useState<Date>(new Date());
+  const [todayOverride, setTodayOverride] = useState<number | null>(null); // 👈 giờ ngủ tạm (session)
   const router = useRouter();
   const { width } = Dimensions.get('window');
   const CARD_W = Math.min(280, width - 48);
   const GAP = 14;
 
-  // 👈 [ĐÃ SỬA] Bọc hàm reloadAll bằng useCallback
-  // Điều này ngăn nó bị tạo lại mỗi lần render, giúp useFocusEffect hoạt động ổn định
+  // Bọc reloadAll để ổn định với useFocusEffect
   const reloadAll = useCallback(async (opts?: { refresh?: boolean }) => {
     try {
       if (opts?.refresh) setRefreshing(true);
       else setLoading(true);
       setError(null);
-      
+
       const [m, a] = await Promise.all([
-        // Gọi list (sẽ đọc từ cache nếu có)
-        // Mặc định 'asc' (tăng dần) là đúng
-        api.metrics.list({ userId: CURRENT_USER_ID }), 
+        api.metrics.list({ userId: CURRENT_USER_ID }), // asc
         api.articles.list(),
       ]);
-      
+
       setMetrics(Array.isArray(m) ? m : []);
       setArticles(Array.isArray(a) ? a : []);
     } catch {
@@ -248,46 +259,54 @@ export default function Home() {
       if (opts?.refresh) setRefreshing(false);
       else setLoading(false);
     }
-  }, []); // 👈 Dependency rỗng, hàm này chỉ được tạo 1 lần
+  }, []);
 
-  
-  // 👈 [ĐÃ SỬA] Thay thế useEffect bằng useFocusEffect
-  // Hàm này sẽ chạy MỖI KHI bạn quay lại màn hình Home
+  // Reload khi màn Home focus + đọc session override
   useFocusEffect(
     useCallback(() => {
-      console.log('Home screen focused, reloading data...'); // Thêm log để kiểm tra
       reloadAll();
-    }, [reloadAll]) // Phụ thuộc vào hàm reloadAll (đã bọc useCallback)
+      setTodayOverride(api.metrics.getTodaySleep()); // 👈 đọc giờ ngủ tạm đã save ở màn Sleep
+    }, [reloadAll])
   );
 
-  // Giữ lại useEffect cho đồng hồ
+  // Đồng hồ
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(t);
   }, []);
 
-  // 👈 [ĐÃ SỬA] Đảm bảo logic lấy 'last' là chính xác
-  // Vì list 'asc' (tăng dần), item cuối cùng là item mới nhất.
+  // Với list asc, phần tử cuối là mới nhất (fallback cho các tile khác)
   const last =
     metrics.length > 0
-      ? metrics[metrics.length - 1] 
-      : { steps: 0, sleep: 0, heartRate: 0, calories: 0 }; // Dữ liệu mặc định
+      ? metrics[metrics.length - 1]
+      : { steps: 0, sleep: 0, heartRate: 0, calories: 0 };
 
-  // Tính toán thời gian ngủ cho ô Highlight
-  const todaySleepValue = last.sleep ?? 0;
-  const todaySleepHours = Math.floor(todaySleepValue);
-  const todaySleepMinutes = Math.round((todaySleepValue % 1) * 60);
+  // Tính giờ ngủ HÔM NAY cho tile Sleep (ưu tiên session override)
+  const tStr = todayStr();
+  const todayMetric = metrics.find((m) => m.date === tStr);
+  const baseTodaySleep = Number(todayMetric?.sleep ?? 0);
+  const effectiveSleep = todayOverride ?? baseTodaySleep;
+  const todaySleepHours = Math.floor(effectiveSleep || 0);
+  const todaySleepMinutes = Math.round(((effectiveSleep || 0) % 1) * 60);
   const todaySleepText = `${todaySleepHours} h ${todaySleepMinutes} min`;
+
+  // Dữ liệu tuần có chèn override để report chính xác
+  const metricsWithOverride =
+    Array.isArray(metrics)
+      ? metrics.map((m) => (m.date === tStr && todayOverride != null ? { ...m, sleep: todayOverride } : m))
+      : metrics;
 
   return (
     <Screen>
       <ScrollView
         contentContainerStyle={{ paddingBottom: 28 }}
         refreshControl={
-          // RefreshControl vẫn dùng hàm reloadAll cũ, rất tốt
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => reloadAll({ refresh: true })}
+            onRefresh={() => {
+              reloadAll({ refresh: true });
+              setTodayOverride(api.metrics.getTodaySleep()); // 👈 đọc lại khi kéo-refresh
+            }}
           />
         }
       >
@@ -303,7 +322,7 @@ export default function Home() {
             </View>
           )}
 
-          {/* ... (Header giữ nguyên) ... */}
+          {/* Header */}
           <View>
             <View
               style={{
@@ -313,13 +332,19 @@ export default function Home() {
               }}
             >
               <Image
-                source={{ uri: 'https://picsum.photos/seed/logo/64/64' }}
-                style={{ width: 28, height: 28, borderRadius: 6 }}
+                source={{ uri: 'https://i.pinimg.com/736x/30/b5/49/30b54999b098050158ed13a1ecdcaab0.jpg' }}
+                style={{ width: 50, height: 50, borderRadius: 18 }}
               />
-              <View style={{ position: 'relative' }}>
+              <TouchableOpacity
+                onPress={() => router.push('/tabs/account' as any)}
+                activeOpacity={0.8}
+                style={{ position: 'relative' }}
+              >
                 <Image
-                  source={{ uri: 'https://i.pravatar.cc/100?img=12' }}
-                  style={{ width: 36, height: 36, borderRadius: 18 }}
+                  source={{
+                    uri: 'https://cdn.24h.com.vn/upload/4-2022/images/2022-12-19/238006022_5119916614690811_3899681092719348092_n--1--1671431214-677-width1000height1500.jpg',
+                  }}
+                  style={{ width: 50, height: 50, borderRadius: 18 }}
                 />
                 <View
                   style={{
@@ -334,8 +359,9 @@ export default function Home() {
                     borderColor: '#fff',
                   }}
                 />
-              </View>
+              </TouchableOpacity>
             </View>
+
             <View
               style={{
                 flexDirection: 'row',
@@ -346,23 +372,12 @@ export default function Home() {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Image
-                  source={{
-                    uri: 'https://img.icons8.com/ios/50/000000/sun--v1.png',
-                  }}
-                  style={{
-                    width: 14,
-                    height: 14,
-                    marginRight: 8,
-                    tintColor: theme.subtext,
-                  }}
+                  source={{ uri: 'https://img.icons8.com/ios/50/000000/sun--v1.png' }}
+                  style={{ width: 14, height: 14, marginRight: 8, tintColor: theme.subtext }}
                 />
-                <Text style={{ color: theme.subtext }}>
-                  {`${now.toLocaleDateString('en-US', {
-                    weekday: 'short',
-                  }).toUpperCase()} ${now.getDate()} ${now
-                    .toLocaleDateString('en-US', {
-                      month: 'short',
-                    })
+                <Text style={{ color: theme.text }}>
+                  {`${now.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()} ${now.getDate()} ${now
+                    .toLocaleDateString('en-US', { month: 'short' })
                     .toUpperCase()}`}
                 </Text>
               </View>
@@ -380,53 +395,30 @@ export default function Home() {
                 }}
               >
                 <Image
-                  source={{
-                    uri: 'https://cdn-icons-png.flaticon.com/128/3064/3064889.png',
-                  }}
+                  source={{ uri: 'https://cdn-icons-png.flaticon.com/128/3064/3064889.png' }}
                   style={{ width: 16, height: 16, marginRight: 8 }}
                 />
-                <Text style={{ color: theme.text, fontWeight: '700' }}>
-                  All data
-                </Text>
+                <Text style={{ color: theme.text, fontWeight: '700' }}>All data</Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* ... (Overview và Health Score giữ nguyên) ... */}
+          {/* Overview */}
           <View style={{ marginTop: 8 }}>
             <H1>Overview</H1>
           </View>
           <Card style={{ marginTop: 12, backgroundColor: '#E9FBFF', padding: 18 }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={{ fontWeight: '800', fontSize: 18 }}>
-                  Health Score
-                </Text>
+                <Text style={{ fontWeight: '800', fontSize: 18 }}>Health Score</Text>
                 <Text style={{ color: theme.subtext, marginTop: 8 }}>
-                  Based on your overview health tracking, your score is 78 and
-                  consider good..
+                  Based on your overview health tracking, your score is 78 and consider good..
                 </Text>
-                <Text
-                  style={{ color: theme.primary, marginTop: 8 }}
-                  onPress={() => router.push('/stack/health-score' as any)}
-                >
+                <Text style={{ color: theme.primary, marginTop: 8 }} onPress={() => router.push('/stack/health-score' as any)}>
                   Tell me more ›
                 </Text>
               </View>
-              <View
-                style={{
-                  width: 72,
-                  height: 90,
-                  alignItems: 'center',
-                  justifyContent: 'flex-start',
-                }}
-              >
+              <View style={{ width: 72, height: 90, alignItems: 'center', justifyContent: 'flex-start' }}>
                 <View
                   style={{
                     width: 72,
@@ -438,11 +430,7 @@ export default function Home() {
                     justifyContent: 'center',
                   }}
                 >
-                  <Text
-                    style={{ color: '#fff', fontWeight: '900', fontSize: 22 }}
-                  >
-                    78
-                  </Text>
+                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 22 }}>78</Text>
                 </View>
                 <View
                   style={{
@@ -460,15 +448,8 @@ export default function Home() {
             </View>
           </Card>
 
-          {/* Highlights Header */}
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              marginTop: 18,
-              alignItems: 'center',
-            }}
-          >
+          {/* Highlights */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 18, alignItems: 'center' }}>
             <H2>Highlights</H2>
             <Link href="/stack/all-data" asChild>
               <TouchableOpacity>
@@ -478,15 +459,7 @@ export default function Home() {
           </View>
 
           {/* Grid 2 cột */}
-          <View
-            style={{
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              justifyContent: 'space-between',
-              marginTop: 10,
-            }}
-          >
-            {/* 👈 [ĐÃ SỬA] Dùng 'last' để cập nhật Steps */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 10 }}>
             <Tile
               title="Steps"
               value={`${(last.steps ?? 0).toLocaleString()}`}
@@ -495,6 +468,7 @@ export default function Home() {
               subtitle="updated 15 min ago"
               onPress={() => router.push('/stack/steps' as any)}
             />
+
             <Tile
               title="Cycle tracking"
               value={`12 days\nbefore period`}
@@ -503,18 +477,17 @@ export default function Home() {
               subtitle="updated 30m ago"
               onPress={() => router.push('/stack/cycle' as any)}
             />
-            
-            {/* 👈 [QUAN TRỌNG] Ô Sleep giờ đã tự động cập nhật */}
+
+            {/* Sleep tile: ƯU TIÊN session override */}
             <Tile
               title="Sleep"
-              value={loading ? '...' : todaySleepText} 
+              value={loading ? '...' : todaySleepText}
               color="#0E5A9C"
               icon="https://cdn-icons-png.flaticon.com/128/14285/14285932.png"
               subtitle="updated today"
               onPress={() => router.push('/stack/sleeps' as any)}
             />
-            
-            {/* 👈 [ĐÃ SỬA] Dùng 'last' để cập nhật Calories */}
+
             <Tile
               title="Nutrition"
               value={`${last.calories ?? 0} kcal`}
@@ -525,39 +498,19 @@ export default function Home() {
             />
           </View>
 
-          {/* ... (This week report giữ nguyên) ... */}
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginTop: 18,
-            }}
-          >
+          {/* This week report (đã chèn override cho hôm nay) */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 }}>
             <H2>This week report</H2>
-            <Link href="/tabs/home" asChild>
-              <TouchableOpacity>
-                <Text style={{ color: theme.subtext }}>View more ›</Text>
-              </TouchableOpacity>
-            </Link>
           </View>
 
           {(() => {
-            const { steps, workoutMin, waterMl, sleepMin } = summarizeWeek(metrics);
+            const { steps, workoutMin, waterMl, sleepMin } = summarizeWeek(metricsWithOverride);
             const hhmm = (min: number) => {
-              const h = Math.floor(min / 60),
-                m = min % 60;
+              const h = Math.floor(min / 60), m = min % 60;
               return `${h}h ${m}min`;
             };
             return (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  justifyContent: 'space-between',
-                  marginTop: 10,
-                }}
-              >
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 10 }}>
                 <ReportCard icon="🦶" title="Steps" value={nf(steps)} />
                 <ReportCard icon="💪" title="Workout" value={hhmm(workoutMin)} />
                 <ReportCard icon="💧" title="Water" value={`${nf(waterMl)} ml`} />
@@ -566,20 +519,9 @@ export default function Home() {
             );
           })()}
 
-
-          {/* ... (Blogs giữ nguyên) ... */}
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginTop: 14,
-            }}
-          >
+          {/* Blogs */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
             <H2>Blogs</H2>
-            <TouchableOpacity onPress={() => router.push('/blog' as any)}>
-              <Text style={{ color: theme.subtext }}>View more ›</Text>
-            </TouchableOpacity>
           </View>
 
           <FlatList
@@ -590,12 +532,7 @@ export default function Home() {
             contentContainerStyle={{ paddingVertical: 10 }}
             renderItem={({ item }) => (
               <View style={{ width: CARD_W, marginRight: GAP }}>
-                <BlogCard
-                  item={item}
-                  onPress={() =>
-                    router.push(`/blog/${item.slug || item.id}` as any)
-                  }
-                />
+                <BlogCard item={item} onPress={() => router.push(`/blog/${item.slug || item.id}` as any)} />
               </View>
             )}
             snapToInterval={CARD_W + GAP}

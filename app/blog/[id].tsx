@@ -1,14 +1,13 @@
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { useLocalSearchParams, Stack } from 'expo-router';
-import { Screen, Container } from '../../components/Ui';
+import { Container, Screen } from '../../components/Ui';
 import { api } from '../../lib/api';
 import { theme } from '../../theme';
 
-// khớp schema mới
 type Article = {
-  id: string;
-  type: 'article';
+  id: string | number;
+  type?: 'article';
   title: string;
   image?: string;
   category?: string;
@@ -24,33 +23,35 @@ export default function BlogDetail() {
   const [liking, setLiking] = useState(false);
 
   useEffect(() => {
-    if (!id) return;
-
     let cancelled = false;
-    (async () => {
+
+    async function load() {
+      if (!id) return;
       try {
         setError(null);
         setData(null);
 
-        // 1) thử lấy theo ID
-        let article: Article | null = null;
-        try {
-          article = await api.articles.get(String(id));
-        } catch {
-          // 2) nếu không phải id hợp lệ, thử coi như slug
-          article = await api.articles.getBySlug?.(String(id)) ?? null;
-        }
+        // Lấy list bài viết (đã đúng với schema /data của bạn)
+        const list = await api.articles.list();
+        const article =
+          (list || []).find(
+            (a: any) =>
+              String(a?.id) === String(id) || String(a?.slug || '').trim() === String(id).trim()
+          ) || null;
 
         if (!cancelled) {
           if (!article) setError('Không tìm thấy bài viết');
           else setData(article);
         }
-      } catch {
+      } catch (e) {
         if (!cancelled) setError('Không tải được bài viết');
       }
-    })();
+    }
 
-    return () => { cancelled = true; };
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   if (error) {
@@ -60,11 +61,11 @@ export default function BlogDetail() {
           <Text style={{ color: 'red', marginBottom: 10 }}>{error}</Text>
           <TouchableOpacity
             onPress={() => {
-              // reload lại effect
               setError(null);
               setData(null);
             }}
-            style={{ backgroundColor: theme.primary, padding: 12, borderRadius: 10, alignSelf: 'flex-start' }}>
+            style={{ backgroundColor: theme.primary, padding: 12, borderRadius: 10, alignSelf: 'flex-start' }}
+          >
             <Text style={{ color: '#fff', fontWeight: '700' }}>Try again</Text>
           </TouchableOpacity>
         </Container>
@@ -73,7 +74,6 @@ export default function BlogDetail() {
   }
 
   if (!data) {
-    // skeleton ngắn gọn
     return (
       <Screen>
         <View style={{ width: '100%', height: 220, backgroundColor: '#eee' }} />
@@ -117,16 +117,18 @@ export default function BlogDetail() {
               onPress={() => {
                 if (liking) return;
                 setLiking(true);
-                setData({ ...data, votes: votes + 1 }); // demo tăng vote local
+                setData({ ...data, votes: votes + 1 }); // tăng vote local (demo)
                 setTimeout(() => setLiking(false), 400);
               }}
-              style={{ backgroundColor: theme.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, marginRight: 10 }}>
+              style={{ backgroundColor: theme.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, marginRight: 10 }}
+            >
               <Text style={{ color: '#fff', fontWeight: '700' }}>{liking ? 'Liked!' : 'Like'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => {}}
-              style={{ borderWidth: 1.2, borderColor: '#E5E7EB', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 }}>
+              style={{ borderWidth: 1.2, borderColor: '#E5E7EB', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 }}
+            >
               <Text style={{ color: theme.text, fontWeight: '700' }}>Save</Text>
             </TouchableOpacity>
           </View>

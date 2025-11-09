@@ -1,16 +1,18 @@
+// app/auth/sign-in.tsx
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { Container, PrimaryButton, Screen } from '../../components/Ui';
-import { loginWithMockApi } from '../../lib/auth';
+import { auth } from '../../lib/api';
 import { theme } from '../../theme';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -36,16 +38,31 @@ export default function SignIn() {
     if (!formValid || loading) return;
     try {
       setLoading(true);
-      const user = await loginWithMockApi(email.trim().toLowerCase(), pw);
-      if (user) {
-        Alert.alert('Thành công', `Xin chào ${user.fullname}!`, [
-          { text: 'OK', onPress: () => router.replace('/tabs/home') },
-        ]);
-      } else {
-        Alert.alert('Đăng nhập thất bại', 'Tài khoản hoặc mật khẩu không hợp lệ.');
-      }
+      Keyboard.dismiss();
+
+      const normEmail = email.trim().toLowerCase();
+
+      // auth.login sẽ:
+      // - fetch /users?email=...
+      // - nếu không có user -> throw "Email không tồn tại"
+      // - nếu sai pw -> throw "Sai mật khẩu"
+      const user = await auth.login(normEmail, pw);
+
+      Alert.alert('Thành công', `Xin chào ${user.fullname}!`, [
+        { text: 'OK', onPress: () => router.replace('/tabs/home') },
+      ]);
     } catch (e: any) {
-      Alert.alert('Lỗi mạng', String(e?.message || e));
+      const msg = String(e?.message || e);
+
+      // Gom về 2 thông điệp thân thiện
+      if (/Email không tồn tại/i.test(msg)) {
+        Alert.alert('Đăng nhập thất bại', 'Email không tồn tại.');
+      } else if (/Sai mật khẩu/i.test(msg)) {
+        Alert.alert('Đăng nhập thất bại', 'Mật khẩu không đúng.');
+      } else {
+        // Lỗi mạng/CORS/khác
+        Alert.alert('Không thể đăng nhập', msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -67,6 +84,7 @@ export default function SignIn() {
           autoCapitalize="none"
           autoCorrect={false}
           style={styles.input}
+          returnKeyType="next"
         />
         {!!errors.email && <Text style={styles.err}>{errors.email}</Text>}
 
@@ -78,6 +96,8 @@ export default function SignIn() {
             value={pw}
             onChangeText={setPw}
             style={styles.input}
+            returnKeyType="done"
+            onSubmitEditing={onSignIn}
           />
           <Text
             onPress={() => setShowPw(s => !s)}
@@ -103,7 +123,6 @@ export default function SignIn() {
         <View style={{ marginTop: 16 }}>
           <TouchableOpacity disabled={loading || !formValid} onPress={onSignIn}>
             <View style={{ opacity: loading || !formValid ? 0.6 : 1 }}>
-              {/* KHÔNG truyền disabled ở đây */}
               <PrimaryButton title={loading ? 'Signing in...' : 'Sign In'} onPress={onSignIn} />
             </View>
           </TouchableOpacity>
@@ -118,7 +137,18 @@ export default function SignIn() {
               { uri: 'https://cdn-icons-png.flaticon.com/128/281/281764.png', label: 'Google' },
               { uri: 'https://cdn-icons-png.flaticon.com/128/731/731985.png', label: 'Apple' },
             ].map((p, i) => (
-              <TouchableOpacity key={i} disabled style={{ opacity: 0.5, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, marginHorizontal: 6 }}>
+              <TouchableOpacity
+                key={i}
+                disabled
+                style={{
+                  opacity: 0.5,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  marginHorizontal: 6,
+                }}
+              >
                 <Image source={{ uri: p.uri }} style={{ width: 18, height: 18, marginRight: 8 }} />
                 <Text style={{ color: theme.purple, fontWeight: '700' }}>{p.label}</Text>
               </TouchableOpacity>

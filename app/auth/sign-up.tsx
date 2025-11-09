@@ -1,22 +1,35 @@
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Container, PrimaryButton, Screen } from '../../components/Ui';
+import { auth } from '../../lib/api';
 import { theme } from '../../theme';
-import { signUpWithMockApi } from '../../lib/auth';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function SignUp() {
   const router = useRouter();
+
+  // ── Form states
   const [fullname, setFullname] = useState('');
   const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
+
+  // ── UI states
   const [showPw, setShowPw] = useState(false);
   const [showPw2, setShowPw2] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // ── Validation
   const errors = useMemo(() => {
     const e: Record<string, string> = {};
     if (!fullname.trim()) e.fullname = 'Vui lòng nhập họ tên';
@@ -29,26 +42,26 @@ export default function SignUp() {
     return e;
   }, [fullname, email, pw, pw2]);
 
-  const formValid = useMemo(() => Object.keys(errors).length === 0, [errors]);
+  const formValid = Object.keys(errors).length === 0;
 
+  // ── Submit
   async function onSignUp() {
     if (!formValid || loading) return;
     try {
       setLoading(true);
-      const user = await signUpWithMockApi({
+
+      const user = await auth.signUp({
         fullname: fullname.trim(),
         email: email.trim().toLowerCase(),
-        password: pw,
+        password: pw, // DÙNG pw, không còn biến password thừa
       });
 
       Alert.alert('Tạo tài khoản thành công', `Chào mừng ${user.fullname}!`, [
-        // Có thể chuyển sang sign-in để login đúng flow
         { text: 'Đăng nhập', onPress: () => router.replace('/auth/sign-in') },
-        // Hoặc vào thẳng app nếu bạn đã có cơ chế set session
+        // Nếu bạn đã có session, có thể vào thẳng home:
         // { text: 'Vào app', onPress: () => router.replace('/tabs/home') },
       ]);
     } catch (e: any) {
-      // signUpWithMockApi đã ném lỗi "Email đã tồn tại." khi trùng
       Alert.alert('Đăng ký thất bại', String(e?.message || e));
     } finally {
       setLoading(false);
@@ -62,6 +75,7 @@ export default function SignUp() {
           Create account ✨
         </Text>
 
+        {/* Full name */}
         <Text style={{ fontWeight: '700', marginBottom: 8, marginTop: 6 }}>Full name</Text>
         <TextInput
           placeholder="Your name"
@@ -72,6 +86,7 @@ export default function SignUp() {
         />
         {!!errors.fullname && <Text style={styles.err}>{errors.fullname}</Text>}
 
+        {/* Email */}
         <Text style={{ fontWeight: '700', marginBottom: 8, marginTop: 6 }}>Email</Text>
         <TextInput
           placeholder="you@example.com"
@@ -84,6 +99,7 @@ export default function SignUp() {
         />
         {!!errors.email && <Text style={styles.err}>{errors.email}</Text>}
 
+        {/* Password */}
         <Text style={{ fontWeight: '700', marginBottom: 8, marginTop: 6 }}>Password</Text>
         <View style={{ position: 'relative' }}>
           <TextInput
@@ -102,6 +118,7 @@ export default function SignUp() {
         </View>
         {!!errors.pw && <Text style={styles.err}>{errors.pw}</Text>}
 
+        {/* Confirm password */}
         <Text style={{ fontWeight: '700', marginBottom: 8, marginTop: 6 }}>Confirm password</Text>
         <View style={{ position: 'relative' }}>
           <TextInput
@@ -120,6 +137,7 @@ export default function SignUp() {
         </View>
         {!!errors.pw2 && <Text style={styles.err}>{errors.pw2}</Text>}
 
+        {/* Submit */}
         <View style={{ marginTop: 16 }}>
           <TouchableOpacity disabled={loading || !formValid} onPress={onSignUp}>
             <View style={{ opacity: loading || !formValid ? 0.6 : 1 }}>
@@ -129,6 +147,7 @@ export default function SignUp() {
           {loading && <ActivityIndicator style={{ marginTop: 8 }} />}
         </View>
 
+        {/* Socials (disabled) */}
         <View style={{ alignItems: 'center', marginVertical: 16 }}>
           <Text style={{ color: theme.subtext }}>OR SIGN UP WITH</Text>
           <View style={{ flexDirection: 'row', marginTop: 12 }}>
@@ -156,6 +175,7 @@ export default function SignUp() {
           </View>
         </View>
 
+        {/* Link to sign-in */}
         <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
           <Text style={{ color: theme.subtext }}>Already have an account? </Text>
           <TouchableOpacity onPress={() => router.replace('/auth/sign-in' as any)}>

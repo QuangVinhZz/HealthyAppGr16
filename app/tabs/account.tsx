@@ -23,7 +23,7 @@ export default function Account(){
         <Text style={{fontSize:28, fontWeight:'800'}}>Account</Text>
 
         <Card style={{alignItems:'center', marginTop:24}}>
-          <Image source={{uri:'https://i.pravatar.cc/150?img=12'}} style={{width:100, height:100, borderRadius:50, marginBottom:12}}/>
+          <Image source={{uri:'https://cdn.24h.com.vn/upload/4-2022/images/2022-12-19/238006022_5119916614690811_3899681092719348092_n--1--1671431214-677-width1000height1500.jpg'}} style={{width:100, height:100, borderRadius:50, marginBottom:12}}/>
           <Text style={{fontSize:20, fontWeight:'700'}}>Lê Nguyễn Quang Vinh</Text>
           <Text style={{color: theme.subtext}}>Grop16-Mobile</Text>
         </Card>
